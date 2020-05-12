@@ -100,15 +100,9 @@ There is no guarantee the package will be available on your specific platform --
 
 #### Microsoft Edge
 
-Developer: [@nikrolls](https://github.com/nikrolls).
+Publisher: [Nik Rolls](https://github.com/nikrolls/uBlock-Edge).
 
-Chromium-based Edge: Stable version available in [Microsoft Edge Insider Addons](https://microsoftedge.microsoft.com/insider-addons/detail/odfafepnkmbhccpbejgmiehpchacaeak).
-
-Legacy Edge: Stable version available in [Microsoft Store](https://www.microsoft.com/store/p/app/9nblggh444l4).
-
-Development version available at <https://github.com/nikrolls/uBlock-Edge#edge>.
-
-Note that issues specific to the Edge fork are the responsibility of the current maintainer, I have no control over the code base of the fork.
+Chromium-based Edge: Stable version available in [Microsoft Edge Add-ons](https://microsoftedge.microsoft.com/addons/detail/odfafepnkmbhccpbejgmiehpchacaeak).
 
 #### Safari (macOS)
 
@@ -122,7 +116,7 @@ Note that issues specific to the Safari fork are the responsibility of the curre
 
 #### Note for all browsers
 
-To benefit from uBlock Origin's higher efficiency, it's advised that you don't use other inefficient blockers at the same time (such as AdBlock or Adblock Plus). uBlock Origin will do [as well or better](#blocking) than most popular ad blockers. Other blockers can also prevent uBlock Origin's privacy or anti-blocker features from working properly.
+To benefit from uBlock Origin's higher efficiency, it's advised that you don't use other content blockers at the same time (such as Adblock Plus, AdBlock). uBlock Origin will do [as well or better](#blocking) than most popular ad blockers. Other blockers can also prevent uBlock Origin's privacy or anti-blocker-defusing features from working properly.
 
 #### Deploying
 
