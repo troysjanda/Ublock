@@ -19,16 +19,12 @@
     Home: https://github.com/gorhill/uBlock
 */
 
-/* global punycode */
-
 'use strict';
 
 /*******************************************************************************
 
     The goal is for the static filtering parser to avoid external
-    dependencies[1] to other code in the project.
-
-    [1] Except unavoidable ones, such as punycode.
+    dependencies to other code in the project.
 
     Roughly, this is how things work: each input string (passed to analyze())
     is decomposed into a minimal set of distinct slices. Each slice is a
@@ -76,12 +72,10 @@
 /******************************************************************************/
 
 const Parser = class {
-    constructor(interactive = false) {
-        this.interactive = interactive;
+    constructor(options = {}) {
+        this.interactive = options.interactive === true;
         this.raw = '';
-        this.rawEnd = 0;
         this.slices = [];
-        this.optSlices = [];
         this.leftSpaceSpan = new Span();
         this.exceptionSpan = new Span();
         this.patternLeftAnchorSpan = new Span();
@@ -109,13 +103,13 @@ const Parser = class {
         this.extOptionsIterator = new ExtOptionsIterator(this);
         this.maxTokenLength = Number.MAX_SAFE_INTEGER;
         this.reIsLocalhostRedirect = /(?:0\.0\.0\.0|(?:broadcast|local)host|local|ip6-\w+)\b/;
+        this.reHostname = /^[^\x00-\x24\x26-\x29\x2B\x2C\x2F\x3A-\x5E\x60\x7B-\x7F]+/;
+        this.punycoder = new URL(self.location);
         this.reset();
     }
 
     reset() {
-        this.rawPos = 0;
         this.sliceWritePtr = 0;
-        this.optSliceWritePtr = 0;
         this.category = CATNone;
         this.allBits = 0;       // bits found in any slices
         this.patternBits = 0;   // bits found in any pattern slices
@@ -322,8 +316,8 @@ const Parser = class {
         this.patternSpan.l = this.optionsAnchorSpan.i - islice;
 
         let patternStartIsRegex =
-                islice < this.optionsAnchorSpan.i &&
-                hasBits(this.slices[islice], BITSlash);
+            islice < this.optionsAnchorSpan.i &&
+            hasBits(this.slices[islice], BITSlash);
         let patternIsRegex = patternStartIsRegex;
         if ( patternStartIsRegex ) {
             const { i, l } = this.patternSpan;
@@ -350,11 +344,10 @@ const Parser = class {
                     // https://github.com/gorhill/uBlock/issues/952
                     //   AdGuard-specific `$$` filters => unsupported.
                     if ( this.findFirstOdd(0, BITHostname | BITComma | BITAsterisk) === i ) {
+                        this.flavorBits |= BITFlavorError;
                         if ( this.interactive ) {
                             this.markSlices(i, i+3, BITError);
                         }
-                        this.allBits |= BITError;
-                        this.flavorBits |= BITFlavorError;
                     } else {
                         this.splitSlot(i, l - 1);
                         i += 3;
@@ -568,14 +561,12 @@ const Parser = class {
                 void new RegExp(this.getNetPattern());
             }
             catch (ex) {
-                const { i, l } = this.patternSpan;
-                this.markSlices(i, i + l, BITError);
+                this.markSpan(this.patternSpan, BITError);
             }
         } else if ( this.patternIsDubious() ) {
             this.markSpan(this.patternSpan, BITError);
         }
-        // Validate options
-        for ( const _ of this.options() ) { void _; }
+        this.netOptionsIterator.init();
     }
 
     analyzeDomainList(from, to, bitSeparator, canEntity) {
@@ -644,8 +635,8 @@ const Parser = class {
     slice(raw) {
         this.reset();
         this.raw = raw;
-        this.rawEnd = raw.length;
-        if ( this.rawEnd === 0 ) { return; }
+        const rawEnd = raw.length;
+        if ( rawEnd === 0 ) { return; }
         // All unicode characters are allowed in hostname
         const unicodeBits = BITUnicode | BITAlpha;
         // Create raw slices
@@ -658,7 +649,7 @@ const Parser = class {
         ptr += 2;
         let allBits = aBits;
         let i = 0, j = 1;
-        while ( j < this.rawEnd ) {
+        while ( j < rawEnd ) {
             c = raw.charCodeAt(j);
             const bBits = c < 0x80 ? charDescBits[c] : unicodeBits;
             if ( bBits !== aBits ) {
@@ -677,7 +668,7 @@ const Parser = class {
         // End-of-line slice
         this.eolSpan.i = ptr;
         slices[ptr+0] = 0;
-        slices[ptr+1] = this.rawEnd;
+        slices[ptr+1] = rawEnd;
         slices[ptr+2] = 0;
         ptr += 3;
         // Trim left
@@ -949,25 +940,25 @@ const Parser = class {
         return this.raw;
     }
 
-    // TODO: if there is a need to punycode, we force a re-analysis post-
-    // punycode conversion. We could avoid the re-analysis by substituting
-    // the original pattern slices with the post-punycode ones, but it's
-    // not trivial work and given how rare this occurs it may not be worth
-    // worrying about this.
     toPunycode() {
-        if ( this.patternHasUnicode() === false ) { return; }
+        if ( this.patternHasUnicode() === false ) { return true; }
         const { i, l } = this.patternSpan;
-        if ( l === 0 ) { return; }
-        const re = /^[^\x00-\x24\x26-\x29\x2B\x2C\x2F\x3A-\x5E\x60\x7B-\x7F]+/;
+        if ( l === 0 ) { return true; }
         let pattern = this.getNetPattern();
-        const match = re.exec(this.pattern);
+        const match = this.reHostname.exec(this.pattern);
         if ( match === null ) { return; }
-        pattern = punycode.toASCII(match[0]) +
-                  this.pattern.slice(match.index + match[0].length);
+        try {
+            this.punycoder.hostname = match[0].replace(/\*/g, '__asterisk__');
+        } catch(ex) {
+            return false;
+        }
+        const punycoded = this.punycoder.hostname.replace(/__asterisk__/g, '*');
+        pattern = punycoded + this.pattern.slice(match.index + match[0].length);
         const beg = this.slices[i+1];
         const end = this.slices[i+l+1];
         const raw = this.raw.slice(0, beg) + pattern + this.raw.slice(end);
         this.analyze(raw);
+        return true;
     }
 
     isException() {
@@ -979,9 +970,15 @@ const Parser = class {
     }
 
     hasError() {
-        return hasBits(this.allBits, BITError);
+        return hasBits(this.flavorBits, BITFlavorError);
     }
 };
+
+/******************************************************************************/
+
+const hasNoBits = (v, bits) => (v & bits) === 0;
+const hasBits = (v, bits) => (v & bits) !== 0;
+const hasNotAllBits = (v, bits) => (v & bits) !== bits;
 
 /******************************************************************************/
 
@@ -1197,11 +1194,10 @@ const OPTAllowOnly               = 1 << 10;
 const OPTMustAssign              = 1 << 11;
 const OPTAllowMayAssign          = 1 << 12;
 const OPTDomainList              = 1 << 13;
-const OPTNotSupported            = 1 << 14;
-
-const hasNoBits = (v, bits) => (v & bits) === 0;
-const hasBits = (v, bits) => (v & bits) !== 0;
-const hasNotAllBits = (v, bits) => (v & bits) !== bits;
+const OPTType                    = 1 << 14;
+const OPTNetworkType             = 1 << 15;
+const OPTRedirectType            = 1 << 16;
+const OPTNotSupported            = 1 << 17;
 
 /******************************************************************************/
 
@@ -1302,7 +1298,7 @@ const NetOptionsIterator = class {
         this.value = undefined;
         this.done = true;
     }
-    [Symbol.iterator]() {
+    init() {
         this.readPtr = this.writePtr = 0;
         this.done = this.parser.optionsSpan.l === 0;
         if ( this.done ) {
@@ -1325,15 +1321,21 @@ const NetOptionsIterator = class {
         const ropts =  lopts + this.parser.optionsSpan.l;
         const slices = this.parser.slices;
         const optSlices = this.optSlices;
+        let typeCount = 0;
+        let networkTypeCount = 0;
+        let redirectIndex = -1;
+        let cspIndex = -1;
         let writePtr = 0;
         let lopt = lopts;
         while ( lopt < ropts ) {
             let good = true;
             let ltok = lopt;
+            // Parse optional negation
             if ( hasBits(slices[lopt], BITTilde) ) {
                 if ( slices[lopt+2] > 1 ) { good = false; }
                 ltok += 3;
             }
+            // Find end of current option
             let lval = 0;
             let i = ltok;
             while ( i < ropts ) {
@@ -1358,6 +1360,7 @@ const NetOptionsIterator = class {
                 const token = this.parser.raw.slice(slices[ltok+1], slices[rtok+1]);
                 descriptor = netOptionTokens.get(token);
             }
+            // Validate option according to context
             if (
                 descriptor === undefined ||
                 ltok !== lopt && hasNoBits(descriptor, OPTCanNegate) ||
@@ -1371,6 +1374,28 @@ const NetOptionsIterator = class {
             ) {
                 descriptor = OPTTokenInvalid;
             }
+            // Keep count of types
+            if ( hasBits(descriptor, OPTType) ) {
+                typeCount += 1;
+                if ( hasBits(descriptor, OPTNetworkType) ) {
+                    networkTypeCount += 1;
+                }
+            }
+            // Only one `redirect` or `csp` can be present
+            if ( hasBits(descriptor, OPTRedirectType) ) {
+                if ( redirectIndex === -1 ) {
+                    redirectIndex = writePtr;
+                } else {
+                    descriptor = OPTTokenInvalid;
+                }
+            } else if ( (descriptor & 0xFF) === OPTTokenCsp ) {
+                if ( cspIndex === -1 ) {
+                    cspIndex = writePtr;
+                } else {
+                    descriptor = OPTTokenInvalid;
+                }
+            }
+            // Mark slices in case of invalid filter option
             if (
                 this.interactive && (
                     descriptor === OPTTokenInvalid ||
@@ -1379,17 +1404,26 @@ const NetOptionsIterator = class {
             ) {
                 this.parser.markSlices(lopt, i, BITError);
             }
+            // Store indices to raw slices -- this will be used during
+            // iteration
             optSlices[writePtr+0] = descriptor;
             optSlices[writePtr+1] = lopt;
             optSlices[writePtr+2] = ltok;
             if ( lval !== 0 ) {
                 optSlices[writePtr+3] = lval;
                 optSlices[writePtr+4] = lval+3;
+                if ( this.interactive && hasBits(descriptor, OPTDomainList) ) {
+                    this.parser.analyzeDomainList(
+                        lval + 3, i, BITPipe,
+                        (descriptor & 0xFF) === OPTTokenDomain
+                    );
+                }
             } else {
                 optSlices[writePtr+3] = i;
                 optSlices[writePtr+4] = i;
             }
             optSlices[writePtr+5] = i;
+            // Advance to next option
             writePtr += 6;
             lopt = i + 3;
         }
@@ -1398,12 +1432,30 @@ const NetOptionsIterator = class {
         if ( this.interactive && hasBits(this.parser.slices[ropts-3], BITComma) ) {
             this.parser.slices[ropts-3] |= BITError;
         }
-        // TODO: Now that all options are parsed, find out erroneous
-        // combinations of options:
-        // - redirect(-rule) requires a single discrete type
-        // - csp can't be mixed with any other types
-        // - any option should appear only once
-        // - etc.
+        // Invalid combinations of options
+        //
+        // `csp` can't be used with any other types
+        if ( cspIndex !== -1 && typeCount !== 0 ) {
+            optSlices[cspIndex] = OPTTokenInvalid;
+            if ( this.interactive ) {
+                this.parser.markSlices(
+                    optSlices[cspIndex+1],
+                    optSlices[cspIndex+5],
+                    BITError
+                );
+            }
+        }
+        // `redirect` requires one single network type
+        if ( redirectIndex !== -1 && typeCount !== 1 && networkTypeCount !== 1 ) {
+            optSlices[redirectIndex] = OPTTokenInvalid;
+            if ( this.interactive ) {
+                this.parser.markSlices(
+                    optSlices[redirectIndex+1],
+                    optSlices[redirectIndex+5],
+                    BITError
+                );
+            }
+        }
         return this;
     }
     next() {
@@ -1424,55 +1476,61 @@ const NetOptionsIterator = class {
                 parser.slices[optSlices[i+4]+1],
                 parser.slices[optSlices[i+5]+1]
             );
-            if ( parser.interactive && hasBits(descriptor, OPTDomainList) ) {
-                parser.analyzeDomainList(
-                    optSlices[i+4],
-                    optSlices[i+5],
-                    BITPipe,
-                    this.item.id === OPTTokenDomain
-                );
-            }
         }
         this.readPtr = i + 6;
         return this;
     }
+    [Symbol.iterator]() {
+        return this.init();
+    }
 };
 
 const netOptionTokens = new Map([
-    [ '1p', OPTToken1p | OPTCanNegate ], [ 'first-party', OPTToken1p | OPTCanNegate ],
-    [ '3p', OPTToken3p | OPTCanNegate ], [ 'third-party', OPTToken3p | OPTCanNegate ],
-    [ 'all', OPTTokenAll ],
+    [ '1p', OPTToken1p | OPTCanNegate ],
+        [ 'first-party', OPTToken1p | OPTCanNegate ],
+    [ '3p', OPTToken3p | OPTCanNegate ],
+        [ 'third-party', OPTToken3p | OPTCanNegate ],
+    [ 'all', OPTTokenAll | OPTType | OPTNetworkType ],
     [ 'badfilter', OPTTokenBadfilter ],
-    [ 'cname', OPTTokenCname | OPTAllowOnly ],
+    [ 'cname', OPTTokenCname | OPTAllowOnly | OPTType ],
     [ 'csp', OPTTokenCsp | OPTMustAssign | OPTAllowMayAssign ],
-    [ 'css', OPTTokenCss | OPTCanNegate ], [ 'stylesheet', OPTTokenCss | OPTCanNegate ],
+    [ 'css', OPTTokenCss | OPTCanNegate | OPTType | OPTNetworkType ],
+        [ 'stylesheet', OPTTokenCss | OPTCanNegate | OPTType | OPTNetworkType ],
     [ 'denyallow', OPTTokenDenyAllow | OPTMustAssign | OPTDomainList ],
-    [ 'doc', OPTTokenDoc ], [ 'document', OPTTokenDoc ],
+    [ 'doc', OPTTokenDoc | OPTType | OPTNetworkType ],
+        [ 'document', OPTTokenDoc | OPTType | OPTNetworkType ],
     [ 'domain', OPTTokenDomain | OPTMustAssign | OPTDomainList ],
-    [ 'ehide', OPTTokenEhide ], [ 'elemhide', OPTTokenEhide ],
-    [ 'empty', OPTTokenEmpty | OPTBlockOnly ],
-    [ 'frame', OPTTokenFrame | OPTCanNegate ], [ 'subdocument', OPTTokenFrame | OPTCanNegate ],
-    [ 'font', OPTTokenFont | OPTCanNegate ],
+    [ 'ehide', OPTTokenEhide | OPTType ],
+        [ 'elemhide', OPTTokenEhide | OPTType ],
+    [ 'empty', OPTTokenEmpty | OPTBlockOnly | OPTType | OPTNetworkType | OPTBlockOnly | OPTRedirectType ],
+    [ 'frame', OPTTokenFrame | OPTCanNegate | OPTType | OPTNetworkType ],
+        [ 'subdocument', OPTTokenFrame | OPTCanNegate | OPTType | OPTNetworkType ],
+    [ 'font', OPTTokenFont | OPTCanNegate | OPTType | OPTNetworkType ],
     [ 'genericblock', OPTTokenGenericblock | OPTNotSupported ],
-    [ 'ghide', OPTTokenGhide ], [ 'generichide', OPTTokenGhide ],
-    [ 'image', OPTTokenImage | OPTCanNegate ],
+    [ 'ghide', OPTTokenGhide | OPTType ],
+        [ 'generichide', OPTTokenGhide | OPTType ],
+    [ 'image', OPTTokenImage | OPTCanNegate | OPTType | OPTNetworkType ],
     [ 'important', OPTTokenImportant | OPTBlockOnly ],
-    [ 'inline-font', OPTTokenInlineFont ],
-    [ 'inline-script', OPTTokenInlineScript ],
-    [ 'media', OPTTokenMedia | OPTCanNegate ],
-    [ 'mp4', OPTTokenMp4 ],
-    [ 'object', OPTTokenObject | OPTCanNegate ], [ 'object-subrequest', OPTTokenObject | OPTCanNegate ],
-    [ 'other', OPTTokenOther | OPTCanNegate ],
-    [ 'ping', OPTTokenPing | OPTCanNegate ], [ 'beacon', OPTTokenPing | OPTCanNegate ],
-    [ 'popunder', OPTTokenPopunder ],
-    [ 'popup', OPTTokenPopup ],
-    [ 'redirect', OPTTokenRedirect | OPTMustAssign | OPTBlockOnly ],
-    [ 'redirect-rule', OPTTokenRedirectRule | OPTMustAssign | OPTBlockOnly ],
-    [ 'script', OPTTokenScript | OPTCanNegate ],
-    [ 'shide', OPTTokenShide ], [ 'specifichide', OPTTokenShide ],
-    [ 'xhr', OPTTokenXhr | OPTCanNegate ], [ 'xmlhttprequest', OPTTokenXhr | OPTCanNegate ],
+    [ 'inline-font', OPTTokenInlineFont | OPTType ],
+    [ 'inline-script', OPTTokenInlineScript | OPTType ],
+    [ 'media', OPTTokenMedia | OPTCanNegate | OPTType | OPTNetworkType ],
+    [ 'mp4', OPTTokenMp4 | OPTType | OPTNetworkType | OPTBlockOnly | OPTRedirectType ],
+    [ 'object', OPTTokenObject | OPTCanNegate | OPTType | OPTNetworkType ],
+        [ 'object-subrequest', OPTTokenObject | OPTCanNegate | OPTType | OPTNetworkType ],
+    [ 'other', OPTTokenOther | OPTCanNegate | OPTType | OPTNetworkType ],
+    [ 'ping', OPTTokenPing | OPTCanNegate | OPTType | OPTNetworkType ],
+        [ 'beacon', OPTTokenPing | OPTCanNegate | OPTType | OPTNetworkType ],
+    [ 'popunder', OPTTokenPopunder | OPTType ],
+    [ 'popup', OPTTokenPopup | OPTType ],
+    [ 'redirect', OPTTokenRedirect | OPTMustAssign | OPTBlockOnly | OPTRedirectType ],
+    [ 'redirect-rule', OPTTokenRedirectRule | OPTMustAssign | OPTBlockOnly | OPTRedirectType ],
+    [ 'script', OPTTokenScript | OPTCanNegate | OPTType | OPTNetworkType ],
+    [ 'shide', OPTTokenShide | OPTType ],
+        [ 'specifichide', OPTTokenShide | OPTType ],
+    [ 'xhr', OPTTokenXhr | OPTCanNegate| OPTType | OPTNetworkType ],
+        [ 'xmlhttprequest', OPTTokenXhr | OPTCanNegate | OPTType | OPTNetworkType ],
     [ 'webrtc', OPTTokenWebrtc | OPTNotSupported ],
-    [ 'websocket', OPTTokenWebsocket | OPTCanNegate ],
+    [ 'websocket', OPTTokenWebsocket | OPTCanNegate | OPTType | OPTNetworkType ],
 ]);
 
 /******************************************************************************/
@@ -1547,7 +1605,7 @@ const ExtOptionsIterator = class {
         this.value = undefined;
         this.done = true;
     }
-    [Symbol.iterator]() {
+    init() {
         const { i, l } = this.parser.optionsSpan;
         this.l = i;
         this.r = i + l;
@@ -1597,11 +1655,14 @@ const ExtOptionsIterator = class {
         this.l = i;
         return this;
     }
+    [Symbol.iterator]() {
+        return this.init();
+    }
 };
 
 /******************************************************************************/
 
-if ( vAPI instanceof Object ) {
+if ( typeof vAPI === 'object' && vAPI !== null ) {
     vAPI.StaticFilteringParser = Parser;
 } else {
     self.StaticFilteringParser = Parser;
