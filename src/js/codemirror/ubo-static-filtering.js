@@ -26,7 +26,12 @@
 /******************************************************************************/
 
 CodeMirror.defineMode('ubo-static-filtering', function() {
-    const parser = new vAPI.StaticFilteringParser({ interactive: true });
+    const StaticFilteringParser = typeof vAPI === 'object'
+        ? vAPI.StaticFilteringParser
+        : self.StaticFilteringParser;
+    if ( StaticFilteringParser instanceof Object === false ) { return; }
+    const parser = new StaticFilteringParser({ interactive: true });
+
     const reDirective = /^!#(?:if|endif|include)\b/;
     let parserSlot = 0;
     let netOptionValueMode = false;
@@ -133,7 +138,7 @@ CodeMirror.defineMode('ubo-static-filtering', function() {
         ) {
             if ( parser.patternIsRegex() ) {
                 stream.pos = parser.slices[parser.optionsAnchorSpan.i+1];
-                parserSlot += parser.optionsAnchorSpan.i;
+                parserSlot = parser.optionsAnchorSpan.i;
                 return 'variable regex';
             }
             if ( (parser.slices[parserSlot] & (parser.BITAsterisk | parser.BITCaret)) !== 0 ) {
@@ -245,57 +250,168 @@ CodeMirror.defineMode('ubo-static-filtering', function() {
 
 // Following code is for auto-completion. Reference:
 //   https://codemirror.net/demo/complete.html
-//
-// TODO: implement auto-completion for `redirect=`
 
 (( ) => {
     if ( typeof vAPI !== 'object' ) { return; }
 
-    let resourceNames = new Map();
+    const StaticFilteringParser = typeof vAPI === 'object'
+        ? vAPI.StaticFilteringParser
+        : self.StaticFilteringParser;
+    if ( StaticFilteringParser instanceof Object === false ) { return; }
 
-    vAPI.messaging.send('dashboard', {
-        what: 'getResourceDetails'
-    }).then(response => {
-        if ( Array.isArray(response) === false ) { return; }
-        resourceNames = new Map(response);
-    });
+    const parser = new StaticFilteringParser();
+    const redirectNames = new Map();
+    const scriptletNames = new Map();
+    const proceduralOperatorNames = new Map(
+        Array.from(parser.proceduralOperatorTokens).filter(item => {
+            return (item[1] & 0b01) !== 0;
+        })
+    );
 
-    const parser = new vAPI.StaticFilteringParser();
+    const pickBestHints = function(cursor, seedLeft, seedRight, hints) {
+        const seed = (seedLeft + seedRight).trim();
+        const out = [];
+        // First, compare against whole seed
+        for ( const hint of hints ) {
+            const text = hint instanceof Object
+                ? hint.displayText || hint.text
+                : hint;
+            if ( text.startsWith(seed) === false ) { continue; }
+            out.push(hint);
+        }
+        // If no match, try again with a different heuristic
+        if ( out.length === 0 ) {
+            for ( const hint of hints ) {
+                const text = hint instanceof Object
+                    ? hint.displayText || hint.text
+                    : hint;
+                if ( seedLeft.length === 1 ) {
+                    if ( text.startsWith(seedLeft) === false ) { continue; }
+                } else if ( text.includes(seed) === false ) { continue; }
+                out.push(hint);
+            }
+        }
+        return {
+            from: { line: cursor.line, ch: cursor.ch - seedLeft.length },
+            to: { line: cursor.line, ch: cursor.ch + seedRight.length },
+            list: out,
+        };
+    };
+
+    const getNetOptionHints = function(cursor, isNegated, seedLeft, seedRight) {
+        const assignPos = seedRight.indexOf('=');
+        if ( assignPos !== -1 ) { seedRight = seedRight.slice(0, assignPos); }
+        const isException = parser.isException();
+        const hints = [];
+        for ( let [ text, bits ] of parser.netOptionTokens ) {
+            if ( isNegated && (bits & parser.OPTCanNegate) === 0 ) { continue; }
+            if ( isException ) {
+                if ( (bits & parser.OPTBlockOnly) !== 0 ) { continue; }
+            } else {
+                if ( (bits & parser.OPTAllowOnly) !== 0 ) { continue; }
+                if ( (assignPos === -1) && (bits & parser.OPTMustAssign) !== 0 ) {
+                    text += '=';
+                }
+            }
+            hints.push(text);
+        }
+        return pickBestHints(cursor, seedLeft, seedRight, hints);
+    };
+
+    const getNetRedirectHints = function(cursor, seedLeft, seedRight) {
+        const hints = [];
+        for ( const text of redirectNames.keys() ) {
+            hints.push(text);
+        }
+        return pickBestHints(cursor, seedLeft, seedRight, hints);
+    };
+
+    const getNetHints = function(cursor, line) {
+        const beg = cursor.ch;
+        if ( beg < parser.optionsSpan ) { return; }
+        const lineBefore = line.slice(0, beg);
+        const lineAfter = line.slice(beg);
+        let matchLeft = /~?([^$,~]*)$/.exec(lineBefore);
+        let matchRight = /^([^,]*)/.exec(lineAfter);
+        if ( matchLeft === null || matchRight === null ) { return; }
+        let pos = matchLeft[1].indexOf('=');
+        if ( pos === -1 ) {
+            return getNetOptionHints(
+                cursor,
+                matchLeft[0].startsWith('~'),
+                matchLeft[1],
+                matchRight[1]
+            );
+        }
+        return getNetRedirectHints(
+            cursor,
+            matchLeft[1].slice(pos + 1),
+            matchRight[1]
+        );
+    };
+
+    const getExtSelectorHints = function(cursor, line) {
+        const beg = cursor.ch;
+        const matchLeft = /#\^?.*:([^:]*)$/.exec(line.slice(0, beg));
+        const matchRight = /^([a-z-]*)\(?/.exec(line.slice(beg));
+        if ( matchLeft === null || matchRight === null ) { return; }
+        const isStaticDOM = matchLeft[0].indexOf('^') !== -1;
+        const hints = [];
+        for ( let [ text, bits ] of proceduralOperatorNames ) {
+            if ( isStaticDOM && (bits & 0b10) !== 0 ) { continue; }
+            hints.push(text);
+        }
+        return pickBestHints(cursor, matchLeft[1], matchRight[1], hints);
+    };
+
+    const getExtScriptletHints = function(cursor, line) {
+        const beg = cursor.ch;
+        const matchLeft = /#\+\js\(([^,]*)$/.exec(line.slice(0, beg));
+        const matchRight = /^([^,)]*)/.exec(line.slice(beg));
+        if ( matchLeft === null || matchRight === null ) { return; }
+        const hints = [];
+        for ( const [ text, displayText ] of scriptletNames ) {
+            const hint = { text };
+            if ( displayText !== '' ) {
+                hint.displayText = displayText;
+            }
+            hints.push(hint);
+        }
+        return pickBestHints(cursor, matchLeft[1], matchRight[1], hints);
+    };
 
     const getHints = function(cm) {
         const cursor = cm.getCursor();
         const line = cm.getLine(cursor.line);
         parser.analyze(line);
-        if ( parser.category !== parser.CATStaticExtFilter ) {
-            return;
-        }
-        if ( parser.hasFlavor(parser.BITFlavorExtScriptlet) === false ) {
-            return;
-        }
-        const beg = cursor.ch;
-        const matchLeft = /#\+\js\(([^,]*)$/.exec(line.slice(0, beg));
-        const matchRight = /^([^,)]*)/.exec(line.slice(beg));
-        if ( matchLeft === null || matchRight === null ) { return; }
-        const seed = (matchLeft[1] + matchRight[1]).trim();
-        const out = [];
-        for ( const [ name, details ] of resourceNames ) {
-            if ( name.startsWith(seed) === false ) { continue; }
-            if ( details.hasData !== true ) { continue; }
-            if ( name.endsWith('.js') === false ) { continue; }
-            const hint = { text: name.slice(0, -3) };
-            if ( details.aliasOf !== '' ) {
-                hint.displayText = `${hint.text} (${details.aliasOf})`;
+        if ( parser.category === parser.CATStaticExtFilter ) {
+            if ( parser.hasFlavor(parser.BITFlavorExtScriptlet) ) {
+                return getExtScriptletHints(cursor, line);
             }
-            out.push(hint);
+            return getExtSelectorHints(cursor, line);
         }
-        return {
-            from: { line: cursor.line, ch: cursor.ch - matchLeft[1].length },
-            to: { line: cursor.line, ch: cursor.ch + matchRight[1].length },
-            list: out,
-        };
+        if ( parser.category === parser.CATStaticNetFilter ) {
+            return getNetHints(cursor, line);
+        }
     };
 
-    CodeMirror.registerHelper('hint', 'ubo-static-filtering', getHints);
+    vAPI.messaging.send('dashboard', {
+        what: 'getResourceDetails'
+    }).then(response => {
+        if ( Array.isArray(response) === false ) { return; }
+        for ( const [ name, details ] of response ) {
+            const displayText = details.aliasOf !== ''
+                ? `${name} (${details.aliasOf})`
+                : '';
+            if ( details.canRedirect ) {
+                redirectNames.set(name, displayText);
+            }
+            if ( details.canInject && name.endsWith('.js') ) {
+                scriptletNames.set(name.slice(0, -3), displayText);
+            }
+        }
+        CodeMirror.registerHelper('hint', 'ubo-static-filtering', getHints);
+    });
 })();
 
 /******************************************************************************/

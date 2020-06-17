@@ -1101,27 +1101,7 @@ Parser.prototype.SelectorCompiler = class {
         this.rePseudoClass = /:(?::?after|:?before|:[a-z][a-z-]*[a-z])$/;
         this.reProceduralOperator = new RegExp([
             '^(?:',
-                [
-                '-abp-contains',
-                '-abp-has',
-                'contains',
-                'has',
-                'has-text',
-                'if',
-                'if-not',
-                'matches-css',
-                'matches-css-after',
-                'matches-css-before',
-                'min-text-length',
-                'not',
-                'nth-ancestor',
-                'remove',
-                'style',
-                'upward',
-                'watch-attr',
-                'watch-attrs',
-                'xpath'
-                ].join('|'),
+                Array.from(parser.proceduralOperatorTokens.keys()).join('|'),
             ')\\('
         ].join(''));
         this.reEatBackslashes = /\\([()])/g;
@@ -1627,6 +1607,28 @@ Parser.prototype.SelectorCompiler = class {
     }
 };
 
+Parser.prototype.proceduralOperatorTokens = new Map([
+    [ '-abp-contains', 0b00 ],
+    [ '-abp-has', 0b00, ],
+    [ 'contains', 0b00, ],
+    [ 'has', 0b01 ],
+    [ 'has-text', 0b01 ],
+    [ 'if', 0b00 ],
+    [ 'if-not', 0b00 ],
+    [ 'matches-css', 0b11 ],
+    [ 'matches-css-after', 0b11 ],
+    [ 'matches-css-before', 0b11 ],
+    [ 'min-text-length', 0b01 ],
+    [ 'not', 0b01 ],
+    [ 'nth-ancestor', 0b00 ],
+    [ 'remove', 0b11 ],
+    [ 'style', 0b11 ],
+    [ 'upward', 0b01 ],
+    [ 'watch-attr', 0b11 ],
+    [ 'watch-attrs', 0b00 ],
+    [ 'xpath', 0b01 ],
+]);
+
 /******************************************************************************/
 
 const hasNoBits = (v, bits) => (v & bits) === 0;
@@ -1933,6 +1935,69 @@ Parser.prototype.OPTTokenXhr = OPTTokenXhr;
 Parser.prototype.OPTTokenWebrtc = OPTTokenWebrtc;
 Parser.prototype.OPTTokenWebsocket = OPTTokenWebsocket;
 
+Parser.prototype.OPTCanNegate = OPTCanNegate;
+Parser.prototype.OPTBlockOnly = OPTBlockOnly;
+Parser.prototype.OPTAllowOnly = OPTAllowOnly;
+Parser.prototype.OPTMustAssign = OPTMustAssign;
+Parser.prototype.OPTAllowMayAssign = OPTAllowMayAssign;
+Parser.prototype.OPTDomainList = OPTDomainList;
+Parser.prototype.OPTType = OPTType;
+Parser.prototype.OPTNetworkType = OPTNetworkType;
+Parser.prototype.OPTRedirectType = OPTRedirectType;
+Parser.prototype.OPTNotSupported = OPTNotSupported;
+
+/******************************************************************************/
+
+const netOptionTokens = new Map([
+    [ '1p', OPTToken1p | OPTCanNegate ],
+        [ 'first-party', OPTToken1p | OPTCanNegate ],
+    [ '3p', OPTToken3p | OPTCanNegate ],
+        [ 'third-party', OPTToken3p | OPTCanNegate ],
+    [ 'all', OPTTokenAll | OPTType | OPTNetworkType ],
+    [ 'badfilter', OPTTokenBadfilter ],
+    [ 'cname', OPTTokenCname | OPTAllowOnly | OPTType ],
+    [ 'csp', OPTTokenCsp | OPTMustAssign | OPTAllowMayAssign ],
+    [ 'css', OPTTokenCss | OPTCanNegate | OPTType | OPTNetworkType ],
+        [ 'stylesheet', OPTTokenCss | OPTCanNegate | OPTType | OPTNetworkType ],
+    [ 'denyallow', OPTTokenDenyAllow | OPTMustAssign | OPTDomainList ],
+    [ 'doc', OPTTokenDoc | OPTType | OPTNetworkType ],
+        [ 'document', OPTTokenDoc | OPTType | OPTNetworkType ],
+    [ 'domain', OPTTokenDomain | OPTMustAssign | OPTDomainList ],
+    [ 'ehide', OPTTokenEhide | OPTType ],
+        [ 'elemhide', OPTTokenEhide | OPTType ],
+    [ 'empty', OPTTokenEmpty | OPTBlockOnly | OPTType | OPTNetworkType | OPTBlockOnly | OPTRedirectType ],
+    [ 'frame', OPTTokenFrame | OPTCanNegate | OPTType | OPTNetworkType ],
+        [ 'subdocument', OPTTokenFrame | OPTCanNegate | OPTType | OPTNetworkType ],
+    [ 'font', OPTTokenFont | OPTCanNegate | OPTType | OPTNetworkType ],
+    [ 'genericblock', OPTTokenGenericblock | OPTNotSupported ],
+    [ 'ghide', OPTTokenGhide | OPTType ],
+        [ 'generichide', OPTTokenGhide | OPTType ],
+    [ 'image', OPTTokenImage | OPTCanNegate | OPTType | OPTNetworkType ],
+    [ 'important', OPTTokenImportant | OPTBlockOnly ],
+    [ 'inline-font', OPTTokenInlineFont | OPTType ],
+    [ 'inline-script', OPTTokenInlineScript | OPTType ],
+    [ 'media', OPTTokenMedia | OPTCanNegate | OPTType | OPTNetworkType ],
+    [ 'mp4', OPTTokenMp4 | OPTType | OPTNetworkType | OPTBlockOnly | OPTRedirectType ],
+    [ 'object', OPTTokenObject | OPTCanNegate | OPTType | OPTNetworkType ],
+        [ 'object-subrequest', OPTTokenObject | OPTCanNegate | OPTType | OPTNetworkType ],
+    [ 'other', OPTTokenOther | OPTCanNegate | OPTType | OPTNetworkType ],
+    [ 'ping', OPTTokenPing | OPTCanNegate | OPTType | OPTNetworkType ],
+        [ 'beacon', OPTTokenPing | OPTCanNegate | OPTType | OPTNetworkType ],
+    [ 'popunder', OPTTokenPopunder | OPTType ],
+    [ 'popup', OPTTokenPopup | OPTType ],
+    [ 'redirect', OPTTokenRedirect | OPTMustAssign | OPTBlockOnly | OPTRedirectType ],
+    [ 'redirect-rule', OPTTokenRedirectRule | OPTMustAssign | OPTBlockOnly | OPTRedirectType ],
+    [ 'script', OPTTokenScript | OPTCanNegate | OPTType | OPTNetworkType ],
+    [ 'shide', OPTTokenShide | OPTType ],
+        [ 'specifichide', OPTTokenShide | OPTType ],
+    [ 'xhr', OPTTokenXhr | OPTCanNegate| OPTType | OPTNetworkType ],
+        [ 'xmlhttprequest', OPTTokenXhr | OPTCanNegate | OPTType | OPTNetworkType ],
+    [ 'webrtc', OPTTokenWebrtc | OPTNotSupported ],
+    [ 'websocket', OPTTokenWebsocket | OPTCanNegate | OPTType | OPTNetworkType ],
+]);
+
+Parser.prototype.netOptionTokens = netOptionTokens;
+
 /******************************************************************************/
 
 const Span = class {
@@ -2159,54 +2224,6 @@ const NetOptionsIterator = class {
         return this;
     }
 };
-
-const netOptionTokens = new Map([
-    [ '1p', OPTToken1p | OPTCanNegate ],
-        [ 'first-party', OPTToken1p | OPTCanNegate ],
-    [ '3p', OPTToken3p | OPTCanNegate ],
-        [ 'third-party', OPTToken3p | OPTCanNegate ],
-    [ 'all', OPTTokenAll | OPTType | OPTNetworkType ],
-    [ 'badfilter', OPTTokenBadfilter ],
-    [ 'cname', OPTTokenCname | OPTAllowOnly | OPTType ],
-    [ 'csp', OPTTokenCsp | OPTMustAssign | OPTAllowMayAssign ],
-    [ 'css', OPTTokenCss | OPTCanNegate | OPTType | OPTNetworkType ],
-        [ 'stylesheet', OPTTokenCss | OPTCanNegate | OPTType | OPTNetworkType ],
-    [ 'denyallow', OPTTokenDenyAllow | OPTMustAssign | OPTDomainList ],
-    [ 'doc', OPTTokenDoc | OPTType | OPTNetworkType ],
-        [ 'document', OPTTokenDoc | OPTType | OPTNetworkType ],
-    [ 'domain', OPTTokenDomain | OPTMustAssign | OPTDomainList ],
-    [ 'ehide', OPTTokenEhide | OPTType ],
-        [ 'elemhide', OPTTokenEhide | OPTType ],
-    [ 'empty', OPTTokenEmpty | OPTBlockOnly | OPTType | OPTNetworkType | OPTBlockOnly | OPTRedirectType ],
-    [ 'frame', OPTTokenFrame | OPTCanNegate | OPTType | OPTNetworkType ],
-        [ 'subdocument', OPTTokenFrame | OPTCanNegate | OPTType | OPTNetworkType ],
-    [ 'font', OPTTokenFont | OPTCanNegate | OPTType | OPTNetworkType ],
-    [ 'genericblock', OPTTokenGenericblock | OPTNotSupported ],
-    [ 'ghide', OPTTokenGhide | OPTType ],
-        [ 'generichide', OPTTokenGhide | OPTType ],
-    [ 'image', OPTTokenImage | OPTCanNegate | OPTType | OPTNetworkType ],
-    [ 'important', OPTTokenImportant | OPTBlockOnly ],
-    [ 'inline-font', OPTTokenInlineFont | OPTType ],
-    [ 'inline-script', OPTTokenInlineScript | OPTType ],
-    [ 'media', OPTTokenMedia | OPTCanNegate | OPTType | OPTNetworkType ],
-    [ 'mp4', OPTTokenMp4 | OPTType | OPTNetworkType | OPTBlockOnly | OPTRedirectType ],
-    [ 'object', OPTTokenObject | OPTCanNegate | OPTType | OPTNetworkType ],
-        [ 'object-subrequest', OPTTokenObject | OPTCanNegate | OPTType | OPTNetworkType ],
-    [ 'other', OPTTokenOther | OPTCanNegate | OPTType | OPTNetworkType ],
-    [ 'ping', OPTTokenPing | OPTCanNegate | OPTType | OPTNetworkType ],
-        [ 'beacon', OPTTokenPing | OPTCanNegate | OPTType | OPTNetworkType ],
-    [ 'popunder', OPTTokenPopunder | OPTType ],
-    [ 'popup', OPTTokenPopup | OPTType ],
-    [ 'redirect', OPTTokenRedirect | OPTMustAssign | OPTBlockOnly | OPTRedirectType ],
-    [ 'redirect-rule', OPTTokenRedirectRule | OPTMustAssign | OPTBlockOnly | OPTRedirectType ],
-    [ 'script', OPTTokenScript | OPTCanNegate | OPTType | OPTNetworkType ],
-    [ 'shide', OPTTokenShide | OPTType ],
-        [ 'specifichide', OPTTokenShide | OPTType ],
-    [ 'xhr', OPTTokenXhr | OPTCanNegate| OPTType | OPTNetworkType ],
-        [ 'xmlhttprequest', OPTTokenXhr | OPTCanNegate | OPTType | OPTNetworkType ],
-    [ 'webrtc', OPTTokenWebrtc | OPTNotSupported ],
-    [ 'websocket', OPTTokenWebsocket | OPTCanNegate | OPTType | OPTNetworkType ],
-]);
 
 /******************************************************************************/
 
