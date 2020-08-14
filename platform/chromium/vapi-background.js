@@ -1599,28 +1599,14 @@ vAPI.cloud = (( ) => {
         }
         bin[dataKey + chunkCount.toString()] = ''; // Sentinel
 
-        let result;
-        let errorStr;
         try {
-            result = await webext.storage.sync.set(bin);
+            await webext.storage.sync.set(bin);
         } catch (reason) {
-            errorStr = reason;
-        }
-
-        // https://github.com/gorhill/uBlock/issues/3006#issuecomment-332597677
-        // - Delete all that was pushed in case of failure.
-        // - It's unknown whether such issue applies only to Firefox:
-        //   until such cases are reported for other browsers, we will
-        //   reset the (now corrupted) content of the cloud storage
-        //   only on Firefox.
-        if ( errorStr !== undefined && vAPI.webextFlavor.soup.has('firefox') ) {
-            chunkCount = 0;
+            return String(reason);
         }
 
         // Remove potentially unused trailing chunks
         deleteChunks(dataKey, chunkCount);
-
-        return errorStr;
     };
 
     const pull = async function(dataKey) {
@@ -1638,7 +1624,7 @@ vAPI.cloud = (( ) => {
         try {
             bin = await webext.storage.sync.get(chunkKeys);
         } catch (reason) {
-            return reason;
+            return String(reason);
         }
 
         // Assemble chunks into a single string.
@@ -1663,6 +1649,28 @@ vAPI.cloud = (( ) => {
         return entry;
     };
 
+    const used = async function(dataKey) {
+        if ( webext.storage.sync.getBytesInUse instanceof Function === false ) {
+            return;
+        }
+        const coarseCount = await getCoarseChunkCount(dataKey);
+        if ( typeof coarseCount !== 'number' ) { return; }
+        const keys = [];
+        for ( let i = 0; i < coarseCount; i++ ) {
+            keys.push(`${dataKey}${i}`);
+        }
+        let results;
+        try {
+            results = await Promise.all([
+                webext.storage.sync.getBytesInUse(keys),
+                webext.storage.sync.getBytesInUse(null),
+            ]);
+        } catch(ex) {
+        }
+        if ( Array.isArray(results) === false ) { return; }
+        return { used: results[0], total: results[1], max: QUOTA_BYTES };
+    };
+
     const getOptions = function(callback) {
         if ( typeof callback !== 'function' ) { return; }
         callback(options);
@@ -1679,7 +1687,7 @@ vAPI.cloud = (( ) => {
         getOptions(callback);
     };
 
-    return { push, pull, getOptions, setOptions };
+    return { push, pull, used, getOptions, setOptions };
 })();
 
 /******************************************************************************/
