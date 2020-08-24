@@ -1522,8 +1522,6 @@ vAPI.cloud = (( ) => {
         maxChunkSize = evalMaxChunkSize();
     }, { once: true });
 
-    const maxStorageSize = QUOTA_BYTES;
-
     const options = {
         defaultDeviceName: window.navigator.platform,
         deviceName: undefined,
@@ -1559,16 +1557,10 @@ vAPI.cloud = (( ) => {
         return chunkCount;
     };
 
-    const deleteChunks = function(datakey, start) {
+    const deleteChunks = async function(datakey, start) {
         const keys = [];
 
-        // No point in deleting more than:
-        // - The max number of chunks per item
-        // - The max number of chunks per storage limit
-        const n = Math.min(
-            maxChunkCountPerItem,
-            Math.ceil(maxStorageSize / maxChunkSize)
-        );
+        const n = await getCoarseChunkCount(datakey);
         for ( let i = start; i < n; i++ ) {
             keys.push(datakey + i.toString());
         }
@@ -1579,6 +1571,12 @@ vAPI.cloud = (( ) => {
 
     const push = async function(details) {
         const { datakey, data, encode } = details;
+        if (
+            data === undefined ||
+            typeof data === 'string' && data === ''
+        ) {
+            return deleteChunks(datakey, 0);
+        }
         const item = {
             source: options.deviceName || options.defaultDeviceName,
             tstamp: Date.now(),
@@ -1602,14 +1600,20 @@ vAPI.cloud = (( ) => {
         }
         bin[datakey + chunkCount.toString()] = ''; // Sentinel
 
+        // Remove potentially unused trailing chunks before storing the data,
+        // this will free storage space which could otherwise cause the push
+        // operation to fail.
+        try {
+            await deleteChunks(datakey, chunkCount + 1);
+        } catch (reason) {
+        }
+
+        // Push the data to browser-provided cloud storage.
         try {
             await webext.storage.sync.set(bin);
         } catch (reason) {
             return String(reason);
         }
-
-        // Remove potentially unused trailing chunks
-        deleteChunks(datakey, chunkCount);
     };
 
     const pull = async function(details) {
