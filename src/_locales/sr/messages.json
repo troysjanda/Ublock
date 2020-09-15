@@ -904,8 +904,12 @@
     "description": "English: Network error: {{msg}}"
   },
   "subscriberConfirm": {
-    "message": "uBlock₀: Додати следећу УРЛ адресу у вашу прилагођену листу филтера?\n\nНазив: \"{{title}}\"\nУРЛ: {{url}}",
-    "description": "English: The message seen by the user to confirm subscription to a ABP filter list"
+    "message": "Додати следећу URL адресу у вашу прилагођену листу филтера?\n\nНазив: \"{{title}}\"\nURL: {{url}}",
+    "description": "No longer used"
+  },
+  "subscribeButton": {
+    "message": "Претплати се",
+    "description": "For the button used to subscribe to a filter list"
   },
   "elapsedOneMinuteAgo": {
     "message": "пре један минут",

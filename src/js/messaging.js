@@ -56,10 +56,10 @@ const onMessage = function(request, sender, callback) {
     switch ( request.what ) {
     case 'getAssetContent':
         // https://github.com/chrisaljoudi/uBlock/issues/417
-        µb.assets.get(
-            request.url,
-            { dontCache: true, needSourceURL: true }
-        ).then(result => {
+        µb.assets.get(request.url, {
+            dontCache: true,
+            needSourceURL: true,
+        }).then(result => {
             callback(result);
         });
         return;
@@ -1590,10 +1590,6 @@ const onMessage = function(request, sender, callback) {
     let response;
 
     switch ( request.what ) {
-    case 'applyFilterListSelection':
-        response = µb.applyFilterListSelection(request);
-        break;
-
     case 'inlinescriptFound':
         if ( µb.logger.enabled && pageStore !== null ) {
             const fctxt = µb.filteringContext.duplicate();
@@ -1611,10 +1607,6 @@ const onMessage = function(request, sender, callback) {
         logCosmeticFilters(tabId, request);
         break;
 
-    case 'reloadAllFilters':
-        µb.loadFilterLists();
-        return;
-
     case 'securityPolicyViolation':
         response = logCSPViolations(pageStore, request);
         break;
@@ -1625,10 +1617,16 @@ const onMessage = function(request, sender, callback) {
         }
         break;
 
-    case 'subscriberData':
-        response = {
-            confirmStr: vAPI.i18n('subscriberConfirm')
-        };
+    case 'subscribeTo':
+        const url = encodeURIComponent(request.location);
+        const title = encodeURIComponent(request.title);
+        const hash = µb.selectedFilterLists.indexOf(request.location) !== -1
+            ? '#subscribed'
+            : '';
+        vAPI.tabs.open({
+            url: `/asset-viewer.html?url=${url}&title=${title}&subscribe=1${hash}`,
+            select: true,
+        });
         break;
 
     default:

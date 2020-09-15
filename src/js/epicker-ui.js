@@ -79,7 +79,6 @@ const filterFromTextarea = function() {
 /******************************************************************************/
 
 const renderRange = function(id, value, invert = false) {
-    const cells = $storAll(`#${id} span`);
     const input = $stor(`#${id} input`);
     const max = parseInt(input.max, 10);
     if ( typeof value !== 'number'  ) {
@@ -89,11 +88,13 @@ const renderRange = function(id, value, invert = false) {
         value = max - value;
     }
     input.value = value;
-    for ( let i = 0, n = cells.length; i < n; i++ ) {
-        cells[i].classList.toggle(
-            'active', Math.round(i * max / (n - 1)) <= value
-        );
-    }
+    const slider = $stor(`#${id} > span`);
+    const lside = slider.children[0];
+    const thumb = slider.children[1];
+    const sliderWidth = slider.offsetWidth;
+    const maxPercent = (sliderWidth - thumb.offsetWidth) / sliderWidth * 100;
+    const widthPercent = value / max * maxPercent;
+    lside.style.width = `${widthPercent}%`;
 };
 
 /******************************************************************************/
@@ -152,8 +153,6 @@ const candidateFromFilterChoice = function(filterChoice) {
 
     $stor(`#cosmeticFilters li:nth-of-type(${slot+1})`)
         .classList.add('active');
-    renderRange('resultsetDepth', slot, true);
-    renderRange('resultsetSpecificity');
 
     const specificity = [
         0b0000,  // remove hierarchy; remove id, nth-of-type, attribute values
@@ -233,6 +232,10 @@ const candidateFromFilterChoice = function(filterChoice) {
 
     computedCandidate = `##${paths.join('')}`;
 
+    $id('resultsetModifiers').classList.remove('hide');
+    renderRange('resultsetDepth', slot, true);
+    renderRange('resultsetSpecificity');
+
     return computedCandidate;
 };
 
@@ -298,7 +301,6 @@ const onSvgTouch = (( ) => {
             return;
         }
         if ( startX === undefined ) { return; }
-        if ( ev.cancelable === false ) { return; }
         const stopX = ev.changedTouches[0].screenX;
         const stopY = ev.changedTouches[0].screenY;
         const angle = Math.abs(Math.atan2(stopY - startY, stopX - startX));
@@ -326,7 +328,9 @@ const onSvgTouch = (( ) => {
         if ( swipeRight === false && angle < Math.PI - angleUpperBound ) {
             return;
         }
-        ev.preventDefault();
+        if ( ev.cancelable ) {
+            ev.preventDefault();
+        }
         // Swipe left.
         if ( swipeRight === false ) {
             if ( pickerRoot.classList.contains('paused') ) {
@@ -505,8 +509,8 @@ const onStartMoving = (( ) => {
         timer = undefined;
         const r1 = Math.min(Math.max(r0 - mx1 + mx0, 4), rMax);
         const b1 = Math.min(Math.max(b0 - my1 + my0, 4), bMax);
-        dialog.style.setProperty('right', `${r1}px`, 'important');
-        dialog.style.setProperty('bottom', `${b1}px`, 'important');
+        dialog.style.setProperty('right', `${r1}px`);
+        dialog.style.setProperty('bottom', `${b1}px`);
     };
 
     const moveAsync = ev => {
@@ -630,7 +634,7 @@ const populateCandidates = function(candidates, selector) {
     if ( candidates.length !== 0 ) {
         root.style.removeProperty('display');
     } else {
-        root.style.setProperty('display', 'none', 'important');
+        root.style.setProperty('display', 'none');
     }
 };
 
