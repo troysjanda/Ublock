@@ -1,7 +1,7 @@
 html#ublock0-epicker,
 #ublock0-epicker body {
     background: transparent;
-    color: black;
+    color: var(--default-ink);
     cursor: not-allowed;
     font: 12px sans-serif;
     height: 100vh;
@@ -14,12 +14,13 @@ html#ublock0-epicker,
 }
 #ublock0-epicker aside {
     background-color: var(--default-surface);
-    border: 1px solid #aaa;
+    border: 1px solid var(--default-surface-border);
     bottom: 4px;
     box-sizing: border-box;
     cursor: default;
     display: none;
-    min-width: 24em;
+    max-width: 36rem;
+    min-width: 24rem;
     padding: 4px;
     position: fixed;
     right: 4px;
@@ -86,10 +87,10 @@ html#ublock0-epicker,
     border-color: red;
 }
 #ublock0-epicker section textarea {
-    background-color: #fff;
+    background-color: var(--default-surface);
     border: none;
     box-sizing: border-box;
-    color: #000;
+    color: var(--default-ink);
     font: 11px monospace;
     height: 8em;
     margin: 0;
@@ -116,7 +117,7 @@ html#ublock0-epicker,
     justify-content: space-evenly;
     }
 #resultsetModifiers.hide > * {
-    display: none;
+    visibility: hidden;
     }
 .resultsetModifier {
     border: 0;
@@ -225,7 +226,7 @@ html#ublock0-epicker,
     border: 1px dotted var(--blue-50);
     }
 #ublock0-epicker #candidateFilters .changeFilter li:hover {
-    background-color: white;
+    background-color: var(--default-surface-hover);
 }
 
 /**

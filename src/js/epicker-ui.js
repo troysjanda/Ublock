@@ -53,9 +53,9 @@ const epickerId = (( ) => {
 })();
 if ( epickerId === null ) { return; }
 
+const docURL = new URL(vAPI.getURL(''));
+
 let epickerConnectionId;
-let filterHostname = '';
-let filterOrigin = '';
 let resultsetOpt;
 
 let netFilterCandidates = [];
@@ -71,9 +71,17 @@ const filterFromTextarea = function() {
     if ( s === '' ) { return ''; }
     const pos = s.indexOf('\n');
     const filter = pos === -1 ? s.trim() : s.slice(0, pos).trim();
-    staticFilteringParser.analyze(filter);
-    staticFilteringParser.analyzeExtra();
-    return staticFilteringParser.shouldDiscard() ? '!' : filter;
+    const sfp = staticFilteringParser;
+    sfp.analyze(filter);
+    sfp.analyzeExtra();
+    if (
+        sfp.category !== sfp.CATStaticExtFilter &&
+        sfp.category !== sfp.CATStaticNetFilter ||
+        sfp.shouldDiscard()
+    ) {
+        return '!';
+    }
+    return filter;
 };
 
 /******************************************************************************/
@@ -102,9 +110,11 @@ const renderRange = function(id, value, invert = false) {
 const userFilterFromCandidate = function(filter) {
     if ( filter === '' || filter === '!' ) { return; }
 
+    const hn = vAPI.hostnameFromURI(docURL.href);
+
     // Cosmetic filter?
     if ( filter.startsWith('##') ) {
-        return filterHostname + filter;
+        return hn + filter;
     }
 
     // Assume net filter
@@ -112,7 +122,7 @@ const userFilterFromCandidate = function(filter) {
 
     // If no domain included in filter, we need domain option
     if ( filter.startsWith('||') === false ) {
-        opts.push(`domain=${filterHostname}`);
+        opts.push(`domain=${hn}`);
     }
 
     if ( resultsetOpt !== undefined ) {
@@ -230,13 +240,24 @@ const candidateFromFilterChoice = function(filterChoice) {
         paths.unshift('body > ');
     }
 
-    computedCandidate = `##${paths.join('')}`;
+    if ( paths.length === 0 ) { return ''; }
 
-    $id('resultsetModifiers').classList.remove('hide');
     renderRange('resultsetDepth', slot, true);
     renderRange('resultsetSpecificity');
 
-    return computedCandidate;
+    vAPI.MessagingConnection.sendTo(epickerConnectionId, {
+        what: 'optimizeCandidate',
+        paths,
+    });
+};
+
+/******************************************************************************/
+
+const onCandidateOptimized = function(details) {
+    $id('resultsetModifiers').classList.remove('hide');
+    computedCandidate = details.filter;
+    taCandidate.value = computedCandidate;
+    onCandidateChanged();
 };
 
 /******************************************************************************/
@@ -405,8 +426,7 @@ const onCreateClicked = function() {
             what: 'createUserFilter',
             autoComment: true,
             filters: filter,
-            origin: filterOrigin,
-            pageDomain: filterHostname,
+            docURL: docURL.href,
             killCache: /^#[$?]?#/.test(candidate) === false,
         });
     }
@@ -437,10 +457,12 @@ const onDepthChanged = function() {
     const input = $stor('#resultsetDepth input');
     const max = parseInt(input.max, 10);
     const value = parseInt(input.value, 10);
-    taCandidate.value = candidateFromFilterChoice({
+    const text = candidateFromFilterChoice({
         filters: cosmeticFilterCandidates,
         slot: max - value,
     });
+    if ( text === undefined ) { return; }
+    taCandidate.value = text;
     onCandidateChanged();
 };
 
@@ -448,10 +470,12 @@ const onDepthChanged = function() {
 
 const onSpecificityChanged = function() {
     if ( taCandidate.value !== computedCandidate ) { return; }
-    taCandidate.value = candidateFromFilterChoice({
+    const text = candidateFromFilterChoice({
         filters: cosmeticFilterCandidates,
         slot: computedCandidateSlot,
     });
+    if ( text === undefined ) { return; }
+    taCandidate.value = text;
     onCandidateChanged();
 };
 
@@ -470,7 +494,9 @@ const onCandidateClicked = function(ev) {
         li = li.previousElementSibling;
         choice.slot += 1;
     }
-    taCandidate.value = candidateFromFilterChoice(choice);
+    const text = candidateFromFilterChoice(choice);
+    if ( text === undefined ) { return; }
+    taCandidate.value = text;
     onCandidateChanged();
 };
 
@@ -655,13 +681,7 @@ const showDialog = function(details) {
     }
     cosmeticFilterCandidates = cosmeticFilters;
 
-    // https://github.com/gorhill/uBlock/issues/738
-    //   Trim dots.
-    filterHostname = details.hostname;
-    if ( filterHostname.slice(-1) === '.' ) {
-        filterHostname = filterHostname.slice(0, -1);
-    }
-    filterOrigin = details.origin;
+    docURL.href = details.url;
 
     populateCandidates(netFilters, '#netFilters');
     populateCandidates(cosmeticFilters, '#cosmeticFilters');
@@ -692,7 +712,9 @@ const showDialog = function(details) {
         slot: filter.slot,
     };
 
-    taCandidate.value = candidateFromFilterChoice(filterChoice);
+    const text = candidateFromFilterChoice(filterChoice);
+    if ( text === undefined ) { return; }
+    taCandidate.value = text;
     onCandidateChanged();
 };
 
@@ -751,6 +773,9 @@ const quitPicker = function() {
 
 const onPickerMessage = function(msg) {
     switch ( msg.what ) {
+        case 'candidateOptimized':
+            onCandidateOptimized(msg);
+            break;
         case 'showDialog':
             showDialog(msg);
             break;

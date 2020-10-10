@@ -820,11 +820,30 @@ const filterToDOMInterface = (( ) => {
 
 /******************************************************************************/
 
+const onOptmizeCandidate = function(details) {
+    const { paths } = details;
+    let count = Number.MAX_SAFE_INTEGER;
+    let selector = '';
+    for ( let i = 0, n = paths.length; i < n; i++ ) {
+        const s = paths.slice(n - i - 1).join('');
+        const elems = document.querySelectorAll(s);
+        if ( elems.length < count ) {
+            selector = s;
+            count = elems.length;
+        }
+    }
+    vAPI.MessagingConnection.sendTo(epickerConnectionId, {
+        what: 'candidateOptimized',
+        filter: `##${selector}`,
+    });
+};
+
+/******************************************************************************/
+
 const showDialog = function(options) {
     vAPI.MessagingConnection.sendTo(epickerConnectionId, {
         what: 'showDialog',
-        hostname: self.location.hostname,
-        origin: self.location.origin,
+        url: self.location.href,
         netFilters: netFilterCandidates,
         cosmeticFilters: cosmeticFilterCandidates,
         filter: bestCandidateFilter,
@@ -1043,6 +1062,9 @@ const onDialogMessage = function(msg) {
             if ( targetElements.length === 0 ) {
                 highlightElements([], true);
             }
+            break;
+        case 'optimizeCandidate':
+            onOptmizeCandidate(msg);
             break;
         case 'dialogCreate':
             filterToDOMInterface.queryAll(msg);
