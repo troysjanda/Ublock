@@ -134,11 +134,23 @@ const NetFilteringResultCache = class {
     }
 
     lookupResult(fctxt) {
-        return this.results.get(
+        const entry = this.results.get(
             fctxt.getDocHostname() + ' ' +
             fctxt.type + ' ' +
             fctxt.url
         );
+        if ( entry === undefined ) { return; }
+        // We need to use a new WAR secret if one is present since WAR secrets
+        // can only be used once.
+        if (
+            entry.redirectURL !== undefined &&
+            entry.redirectURL.startsWith(this.extensionOriginURL)
+        ) {
+            const redirectURL = new URL(entry.redirectURL);
+            redirectURL.searchParams.set('secret', vAPI.warSecret());
+            entry.redirectURL = redirectURL.href;
+        }
+        return entry;
     }
 
     lookupAllBlocked(hostname) {
@@ -158,6 +170,7 @@ const NetFilteringResultCache = class {
 };
 
 NetFilteringResultCache.prototype.shelfLife = 15000;
+NetFilteringResultCache.prototype.extensionOriginURL = vAPI.getURL('/');
 
 /******************************************************************************/
 
@@ -267,18 +280,6 @@ const PageStore = class {
         this.frames = new Map();
         this.setFrameURL(0, tabContext.rawURL);
 
-        // The current filtering context is cloned because:
-        // - We may be called with or without the current context having been
-        //   initialized.
-        // - If it has been initialized, we do not want to change the state
-        //   of the current context.
-        const fctxt = µb.logger.enabled
-            ? µb.filteringContext
-                .duplicate()
-                .fromTabId(tabId)
-                .setURL(tabContext.rawURL)
-            : undefined;
-
         // https://github.com/uBlockOrigin/uBlock-issues/issues/314
         const masterSwitch = tabContext.getNetFilteringSwitch();
 
@@ -292,10 +293,14 @@ const PageStore = class {
             µb.logger.enabled &&
             context === 'tabCommitted'
         ) {
-            fctxt.setRealm('cosmetic')
-                 .setType('dom')
-                 .setFilter(µb.sessionSwitches.toLogData())
-                 .toLogger();
+            µb.filteringContext
+                .duplicate()
+                .fromTabId(tabId)
+                .setURL(tabContext.rawURL)
+                .setRealm('cosmetic')
+                .setType('dom')
+                .setFilter(µb.sessionSwitches.toLogData())
+                .toLogger();
         }
 
         return this;
@@ -540,6 +545,7 @@ const PageStore = class {
 
     filterRequest(fctxt) {
         fctxt.filter = undefined;
+        fctxt.redirectURL = undefined;
 
         if ( this.getNetFilteringSwitch(fctxt) === false ) {
             return 0;
@@ -647,22 +653,9 @@ const PageStore = class {
         //   Redirect non-blocked request?
         if ( (fctxt.itype & fctxt.INLINE_ANY) === 0 ) {
             if ( result === 1 ) {
-                if ( µb.hiddenSettings.ignoreRedirectFilters !== true ) {
-                    const redirectURL = µb.redirectEngine.toURL(fctxt);
-                    if ( redirectURL !== undefined ) {
-                        fctxt.redirectURL = redirectURL;
-                        this.internalRedirectionCount += 1;
-                        fctxt.pushFilter({
-                            source: 'redirect',
-                            raw: µb.redirectEngine.resourceNameRegister
-                        });
-                    }
-                }
+                this.redirectBlockedRequest(fctxt);
             } else if ( snfe.hasQuery(fctxt) ) {
-                const directives = snfe.filterQuery(fctxt);
-                if ( directives !== undefined && loggerEnabled ) {
-                    fctxt.pushFilters(directives.map(a => a.logData()));
-                }
+                this.redirectNonBlockedRequest(fctxt);
             }
         }
 
@@ -673,6 +666,32 @@ const PageStore = class {
         }
 
         return result;
+    }
+
+    redirectBlockedRequest(fctxt) {
+        if ( µb.hiddenSettings.ignoreRedirectFilters === true ) { return; }
+        const directive = µb.staticNetFilteringEngine.redirectRequest(fctxt);
+        if ( directive === undefined ) { return; }
+        this.internalRedirectionCount += 1;
+        if ( µb.logger.enabled !== true ) { return; }
+        fctxt.pushFilter(directive.logData());
+        if ( fctxt.redirectURL === undefined ) { return; }
+        fctxt.pushFilter({
+            source: 'redirect',
+            raw: µb.redirectEngine.resourceNameRegister
+        });
+    }
+
+    redirectNonBlockedRequest(fctxt) {
+        const directives = µb.staticNetFilteringEngine.filterQuery(fctxt);
+        if ( directives === undefined ) { return; }
+        if ( µb.logger.enabled !== true ) { return; }
+        fctxt.pushFilters(directives.map(a => a.logData()));
+        if ( fctxt.redirectURL === undefined ) { return; }
+        fctxt.pushFilter({
+            source: 'redirect',
+            raw: fctxt.redirectURL
+        });
     }
 
     filterCSPReport(fctxt) {
