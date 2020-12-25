@@ -4261,19 +4261,18 @@ FilterContainer.parseRedirectRequestValue = function(modifier) {
 };
 
 FilterContainer.compareRedirectRequests = function(a, b) {
-    const abits = a.bits, bbits = b.bits;
+    const { token: atok, priority: aint, bits: abits } =
+        FilterContainer.parseRedirectRequestValue(a.modifier);
+    if ( µb.redirectEngine.hasToken(atok) === false ) { return -1; }
+    const { token: btok, priority: bint, bits: bbits } =
+        FilterContainer.parseRedirectRequestValue(b.modifier);
+    if ( µb.redirectEngine.hasToken(btok) === false ) { return 1; }
     if ( abits !== bbits ) {
         if ( (abits & Important) !== 0 ) { return 1; }
         if ( (bbits & Important) !== 0 ) { return -1; }
         if ( (abits & AllowAction) !== 0 ) { return -1; }
         if ( (bbits & AllowAction) !== 0 ) { return 1; }
     }
-    const { token: atok, priority: aint } =
-        FilterContainer.parseRedirectRequestValue(a.modifier);
-    if ( µb.redirectEngine.hasToken(atok) === false ) { return -1; }
-    const { token: btok, priority: bint } =
-        FilterContainer.parseRedirectRequestValue(b.modifier);
-    if ( µb.redirectEngine.hasToken(btok) === false ) { return 1; }
     return aint - bint;
 };
 
@@ -4285,7 +4284,9 @@ FilterContainer.prototype.filterQuery = function(fctxt) {
     const url = fctxt.url;
     const qpos = url.indexOf('?');
     if ( qpos === -1 ) { return; }
-    const params = new Map(new self.URLSearchParams(url.slice(qpos + 1)));
+    let hpos = url.indexOf('#', qpos + 1);
+    if ( hpos === -1 ) { hpos = url.length; }
+    const params = new Map(new self.URLSearchParams(url.slice(qpos + 1, hpos)));
     const out = [];
     for ( const directive of directives ) {
         if ( params.size === 0 ) { break; }
@@ -4334,8 +4335,11 @@ FilterContainer.prototype.filterQuery = function(fctxt) {
     fctxt.redirectURL = url.slice(0, qpos);
     if ( params.size !== 0 ) {
         fctxt.redirectURL += '?' + Array.from(params).map(a =>
-            `${a[0]}=${encodeURIComponent(a[1])}`
+            a[1] === '' ? a[0] : `${a[0]}=${encodeURIComponent(a[1])}`
         ).join('&');
+    }
+    if ( hpos !== url.length ) {
+        fctxt.redirectURL += url.slice(hpos);
     }
     return out;
 };

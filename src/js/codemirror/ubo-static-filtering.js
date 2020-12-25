@@ -455,16 +455,26 @@ const initHints = function() {
         };
     };
 
-    const getOriginHints = function(cursor, line) {
+    const getOriginHints = function(cursor, line, suffix = '') {
         const beg = cursor.ch;
         const matchLeft = /[^,|=~]*$/.exec(line.slice(0, beg));
         const matchRight = /^[^#,|]*/.exec(line.slice(beg));
         if ( matchLeft === null || matchRight === null ) { return; }
         const hints = [];
         for ( const text of originHints ) {
-            hints.push(text);
+            hints.push(text + suffix);
         }
         return pickBestHints(cursor, matchLeft[0], matchRight[0], hints);
+    };
+
+    const getNetPatternHints = function(cursor, line) {
+        if ( /\|\|[\w.-]*$/.test(line.slice(0, cursor.ch)) ) {
+            return getOriginHints(cursor, line, '^');
+        }
+        // Maybe a static extended filter is meant to be crafted.
+        if ( /[^\w\x80-\xF4#,.-]/.test(line) === false ) {
+            return getOriginHints(cursor, line);
+        }
     };
 
     const getNetOptionHints = function(cursor, seedLeft, seedRight) {
@@ -503,16 +513,9 @@ const initHints = function() {
 
     const getNetHints = function(cursor, line) {
         const beg = cursor.ch;
-        if (
-            parser.optionsAnchorSpan.len === 0 &&
-            line.endsWith('$') === false
-        ) {
-            if ( /[^\w\x80-\xF4#,.-]/.test(line) === false ) {
-                return getOriginHints(cursor, line);
-            }
-            return;
+        if ( beg <= parser.slices[parser.optionsAnchorSpan.i+1] ) {
+            return getNetPatternHints(cursor, line);
         }
-        if ( beg < parser.slices[parser.optionsSpan.i+1] ) { return; }
         const lineBefore = line.slice(0, beg);
         const lineAfter = line.slice(beg);
         let matchLeft = /[^$,]*$/.exec(lineBefore);
@@ -717,7 +720,7 @@ CodeMirror.registerHelper('fold', 'ubo-static-filtering', (( ) => {
                     end = ch + r[0].length;
                 }
             } else if ( /\bvariable\b/.test(token) ) {
-                const l = /[#.]?[a-z0-9_-]+$/i.exec(s.slice(0, ch));
+                const l = /[#.][a-z0-9_-]+$/i.exec(s.slice(0, ch));
                 const r = /^[a-z0-9_-]+/i.exec(s.slice(ch));
                 if ( l && r ) {
                     beg = l.index;

@@ -114,8 +114,11 @@ const onVersionReady = function(lastVersion) {
     if ( lastVersionInt === 0 ) { return; }
 
     // https://github.com/LiCybora/NanoDefenderFirefox/issues/196
-    //   Toggle on the blocking of CSP reports by default.
-    if ( lastVersionInt <= 1031003011 ) {
+    //   Toggle on the blocking of CSP reports by default for Firefox.
+    if (
+        vAPI.webextFlavor.soup.has('firefox') &&
+        lastVersionInt <= 1031003011
+    ) {
         µb.sessionSwitches.toggle('no-csp-reports', '*', 1);
         µb.permanentSwitches.toggle('no-csp-reports', '*', 1);
         µb.saveHostnameSwitches();
@@ -223,7 +226,6 @@ const fromFetch = function(to, fetched) {
 const createDefaultProps = function() {
     const fetchableProps = {
         'dynamicFilteringString': [
-            'no-csp-reports: * true',
             'behind-the-scene * * noop',
             'behind-the-scene * image noop',
             'behind-the-scene * 3p noop',
@@ -243,6 +245,10 @@ const createDefaultProps = function() {
         'netWhitelist': µb.netWhitelistDefault,
         'version': '0.0.0.0'
     };
+    // https://github.com/LiCybora/NanoDefenderFirefox/issues/196
+    if ( vAPI.webextFlavor.soup.has('firefox') ) {
+        fetchableProps.hostnameSwitchesString += '\nno-csp-reports: * true';
+    }
     toFetch(µb.localSettings, fetchableProps);
     toFetch(µb.userSettings, fetchableProps);
     toFetch(µb.restoreBackupSettings, fetchableProps);
