@@ -1214,8 +1214,11 @@ const onMessage = function(request, sender, callback) {
     let response;
 
     switch ( request.what ) {
-    case 'canUpdateShortcuts':
-        response = µb.canUpdateShortcuts;
+    case 'dashboardConfig':
+        response = {
+            canUpdateShortcuts: µb.canUpdateShortcuts,
+            noDashboard: µb.noDashboard,
+        };
         break;
 
     case 'getAutoCompleteDetails':
@@ -1258,8 +1261,9 @@ const onMessage = function(request, sender, callback) {
 
     case 'readHiddenSettings':
         response = {
-            current: µb.hiddenSettings,
-            default: µb.hiddenSettingsDefault,
+            'default': µb.hiddenSettingsDefault,
+            'admin': µb.hiddenSettingsAdmin,
+            'current': µb.hiddenSettings,
         };
         break;
 
