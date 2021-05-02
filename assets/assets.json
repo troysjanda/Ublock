@@ -22,6 +22,11 @@
 		"contentURL": [
 			"https://raw.githubusercontent.com/uBlockOrigin/uAssets/master/filters/badlists.txt",
 			"assets/ublock/badlists.txt"
+		],
+		"cdnURLs": [
+			"https://gitcdn.xyz/repo/uBlockOrigin/uAssets/master/filters/badlists.txt",
+			"https://cdn.jsdelivr.net/gh/uBlockOrigin/uAssets@master/filters/badlists.txt",
+			"https://cdn.statically.io/gh/uBlockOrigin/uAssets/master/filters/badlists.txt"
 		]
 	},
 	"ublock-filters": {
@@ -35,7 +40,8 @@
 		"cdnURLs": [
 			"https://gitcdn.xyz/repo/uBlockOrigin/uAssets/master/filters/filters.txt",
 			"https://cdn.jsdelivr.net/gh/uBlockOrigin/uAssets@master/filters/filters.txt",
-			"https://cdn.statically.io/gh/uBlockOrigin/uAssets/master/filters/filters.txt"
+			"https://combinatronics.com/uBlockOrigin/uAssets/master/filters/filters.txt",
+			"https://raw.githubusercontent.com/uBlockOrigin/uAssets/master/filters/filters.txt"
 		],
 		"supportURL": "https://github.com/uBlockOrigin/uAssets/issues"
 	},
@@ -47,6 +53,11 @@
 			"https://raw.githubusercontent.com/uBlockOrigin/uAssets/master/filters/badware.txt",
 			"assets/ublock/badware.txt"
 		],
+		"cdnURLs": [
+			"https://gitcdn.xyz/repo/uBlockOrigin/uAssets/master/filters/badware.txt",
+			"https://cdn.jsdelivr.net/gh/uBlockOrigin/uAssets@master/filters/badware.txt",
+			"https://cdn.statically.io/gh/uBlockOrigin/uAssets/master/filters/badware.txt"
+		],
 		"supportURL": "https://github.com/gorhill/uBlock/wiki/Badware-risks",
 		"instructionURL": "https://github.com/gorhill/uBlock/wiki/Badware-risks"
 	},
@@ -57,6 +68,11 @@
 		"contentURL": [
 			"https://raw.githubusercontent.com/uBlockOrigin/uAssets/master/filters/privacy.txt",
 			"assets/ublock/privacy.txt"
+		],
+		"cdnURLs": [
+			"https://gitcdn.xyz/repo/uBlockOrigin/uAssets/master/filters/privacy.txt",
+			"https://cdn.jsdelivr.net/gh/uBlockOrigin/uAssets@master/filters/privacy.txt",
+			"https://cdn.statically.io/gh/uBlockOrigin/uAssets/master/filters/privacy.txt"
 		]
 	},
 	"ublock-abuse": {
@@ -66,6 +82,11 @@
 		"contentURL": [
 			"https://raw.githubusercontent.com/uBlockOrigin/uAssets/master/filters/resource-abuse.txt",
 			"assets/ublock/resource-abuse.txt"
+		],
+		"cdnURLs": [
+			"https://gitcdn.xyz/repo/uBlockOrigin/uAssets/master/filters/resource-abuse.txt",
+			"https://cdn.jsdelivr.net/gh/uBlockOrigin/uAssets@master/filters/resource-abuse.txt",
+			"https://cdn.statically.io/gh/uBlockOrigin/uAssets/master/filters/resource-abuse.txt"
 		]
 	},
 	"ublock-unbreak": {
@@ -446,10 +467,10 @@
 		"content": "filters",
 		"group": "regions",
 		"off": true,
-		"title": "NLD: EasyList Dutch",
+		"title": "NLD: EasyDutch",
 		"lang": "af fy nl",
-		"contentURL": "https://easylist-downloads.adblockplus.org/easylistdutch.txt",
-		"supportURL": "https://forums.lanik.us/viewforum.php?f=100"
+		"contentURL": "https://raw.githubusercontent.com/BPower0036/AdBlockFilters/main/easydutch",
+		"supportURL": "https://github.com/BPower0036/AdBlockFilters"
 	},
 	"NOR-0": {
 		"content": "filters",
