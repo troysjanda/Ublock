@@ -307,6 +307,7 @@
 
 /// addEventListener-defuser.js
 /// alias aeld.js
+// https://github.com/uBlockOrigin/uAssets/issues/9123#issuecomment-848255120
 (function() {
     let needle1 = '{{1}}';
     if ( needle1 === '' || needle1 === '{{1}}' ) {
@@ -330,8 +331,12 @@
         self.EventTarget.prototype.addEventListener,
         {
             apply: function(target, thisArg, args) {
-                const type = String(args[0]);
-                const handler = String(args[1]);
+                let type, handler;
+                try {
+                    type = String(args[0]);
+                    handler = String(args[1]);
+                } catch(ex) {
+                }
                 if (
                     needle1.test(type) === false ||
                     needle2.test(handler) === false
@@ -346,14 +351,19 @@
 
 /// addEventListener-logger.js
 /// alias aell.js
+// https://github.com/uBlockOrigin/uAssets/issues/9123#issuecomment-848255120
 (function() {
     const log = console.log.bind(console);
     self.EventTarget.prototype.addEventListener = new Proxy(
         self.EventTarget.prototype.addEventListener,
         {
             apply: function(target, thisArg, args) {
-                const type = String(args[0]);
-                const handler = String(args[1]);
+                let type, handler;
+                try {
+                    type = String(args[0]);
+                    handler = String(args[1]);
+                } catch(ex) {
+                }
                 log('uBO: addEventListener("%s", %s)', type, handler);
                 return target.apply(thisArg, args);
             }
@@ -821,6 +831,12 @@
         cValue = true;
     } else if ( cValue === 'null' ) {
         cValue = null;
+    } else if ( cValue === "''" ) {
+        cValue = '';
+    } else if ( cValue === '[]' ) {
+        cValue = [];
+    } else if ( cValue === '{}' ) {
+        cValue = {};
     } else if ( cValue === 'noopFunc' ) {
         cValue = function(){};
     } else if ( cValue === 'trueFunc' ) {
@@ -831,8 +847,6 @@
         cValue = parseFloat(cValue);
         if ( isNaN(cValue) ) { return; }
         if ( Math.abs(cValue) > 0x7FFF ) { return; }
-    } else if ( cValue === "''" ) {
-        cValue = '';
     } else {
         return;
     }
